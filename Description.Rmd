@@ -1,0 +1,321 @@
+---
+title: "Description"
+author: "TO MINH ANH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "Homework 4 - La Quinta is Spanish for next to Denny's"
+format: 
+  html:
+    self-contained: true
+---
+
+
+## Task 1 - Scraping Denny's
+
+<!-- Detail your approach for scraping restaurant data from https://locations.dennys.com/ -->
+
+### Scrape the URLs for each restaurant page: `get_dennys`
+
+Our main aim was to find URLs that ended with restaurant numbers. To help with this task, we organized the links into three groups. First, there was `link_more.` This group contained the URLs we started with and the ones we needed to scrape continuously. The second group was `link_continue,` which stored URLs requiring further scraping. We cleared it when we reached the final layer, where URLs ended with restaurant numbers. The third group, `link_final,` held the final URLs, all in the `xxx.number` format. We used the variable `n` to keep track of our current layer.
+
+The first line of code checked if we already had the final URL. We did this by removing the ".html" at the end and confirming whether it ended with one or more digits. If it didn't, we started looking for the link that led us to the "restaurant page." First, we went to the state-level webpage. If there was only one restaurant in that state, we stopped the search and added the "href" part to the URL, granting access to the restaurant's page. If there were multiple restaurants in the state, we visited the state-level page, such as "xx/AL.html."
+
+Since this wasn't the final step, we continued scraping. This time, we used the state-level page as our starting point and set `link_more` to be the same as `link_continue.` We looked for the "href" that would take us from the state level to a specific city's restaurant. If there was only one restaurant in that city, we added "state/city/number" to the "href" and attached it to the original URL, but without the ".html" at the end, to get the final URL and end the search.
+
+If there were multiple restaurants in one city (which happened when $n \geq 3$), we were taken to another intermediate page. In this case, if we used "section div ul li a" from the intermediate page and added it directly to `url_0,` we would miss the state level because the "href" on the intermediate page looked like "city/number.html." We had to extract the state from the city page and add it before the "href" using ".c-bread-crumbs-item+ .c-bread-crumbs-item a .c-bread-crumbs-name." This always gave us two state abbreviations ('AL AL'), and we picked the first one to add to the URL. During this process, we handled "Washington DC," which didn't follow the usual "state/city/number" format in its "href" extraction. Instead, it was like the third layer (n = 3), so we noted that in the loop.
+
+In the end, we collected all the restaurant pages ending with numbers. `link_final` contained links to restaurants that were the only ones in their cities, and `link_more` included restaurants from the third layer operation when one city had multiple restaurants. We combined all these modified URLs into the final result, `link_final_dennys = c(link_final, link_more).` `link_final` had a total of 1405 URLs ending with numbers.
+
+Finally, we saved the HTML files in `data/dennys` for future analysis.
+
+### Scrape information using these URLs: `parse_dennys`
+
+With the scraped URLs for each restaurant, we could scrape more information like `latitude`, `longitude`, `address`, `phone number` and `opening hours` for each day. To enhance the readability of the `address`, we parsed it into distinct columns, including `street`, `city`, `state`, and `postal_code`. Some empty vectors and data frame were created initially to save the scarped results. In the loop, firstly, each URL link was read using `read_html` and saved to avoid repeatedly visiting the website. Subsequently, the functions like `html_nodes`, `html_attr` and `html_text` were applied to scrape the information we needed.
+
+The process of scraping `opening hours` was somewhat intricate, needing a brief explanation. We navigated the HTML documents to locate nodes with the class "span.c-hours-today-day-hours-intervals-instance". This allowed us to retrieve both the opening and closing hours of restaurants, including those that operate 24 hours a day. However, there were instances where restaurants were completely closed. In such scenarios, we needed to explore alternative nodes to capture the text "Closed." Our approach was first checking if any information was retrievable from the initial nodes; if not, we then proceeded to navigate to nodes capable of retrieving the "Closed" status. (We used `str_trim` because some blank space after "Closed" were observed.) Notice there were also some pages without information regarding opening hours, leading to the presence of `NA` values within the final data frame. 
+
+Finally the columns were combined to a data frame, and we saved it to `data/dennys.rds`. 
+
+
+<br />
+
+
+## Task 2 - Scraping LQ
+
+
+<!-- Detail your approach for scraping hotel data from https://www.wyndhamhotels.com/laquinta/locations -->
+
+### Scrape the URLs for each hotel page: `get_lq`
+
+Starting from the base URL, we extracted all the "href" links to hotel pages located at the ".property a:nth-child(1)" nodes. These links were then combined with the trimmed base URL to create complete URLs.
+
+To filter for hotels situated within the United States, we employed a method that involved utilizing the `state.name` dataset from the `datasets` library, which contains a comprehensive list of all U.S. states.
+
+Subsequently, we cross-referenced the acquired URLs to verify if they contained the state names, accomplishing this using the `grep` function. We retained only those URLs that met our specified criteria. It's important to note that the state names in the URLs were consistently formatted in lowercase and hyphenated. For example, "New Jersey" was represented as "new-jersey" in the URLs. Therefore, we needed to perform certain transformations to align with this format.
+
+Lastly, we saved the HTML pages to the `data/lq` directory. This was achieved by creating a loop that iterated through the transformed links, downloaded the corresponding web pages, and saved them locally in HTML format. This approach ensures that the web pages are readily available for further analysis and processing."
+
+### Scrape information using these URLs: `parse_lq`
+
+After obtaining the URLs of hotels in the USA, we used a loop to extract specific information for each hotel. By inspecting the page source, we identified that relevant details, such as latitude, longitude, address (including street, city, state, and postal code), and phone number, were contained within a JSON file.
+
+To access this JSON data, we located it within the HTML structure using the CSS selector "script[type = 'application/ld+json']." Next, we employed the `html_text` function to extract the JSON text, and the `fromJSON` function to parse it into an R list.
+
+Subsequently, we extracted each element of interest from the list using the `subset` operation. Finally, we aggregated the extracted data into a data frame and saved it as an RDS file in the `data/lq` directory. 
+
+
+<br />
+
+
+## Task 3 - Distance Analysis
+
+<!-- Detail your statistical analysis of the pairwise distance between Denny's and LQ's locations -->
+
+Feference code for calculating the distance:
+https://stackoverflow.com/questions/57525670/find-closest-points-lat-lon-from-one-data-set-to-a-second-data-set
+
+In this section, we conducted distance calculations to determine the proximity of La Quinta locations to each Denny's restaurant, as well as the reverse – the proximity of Denny's to each La Quinta. We noticed that the sets of distances between La Quinta locations and their nearest Denny's differ from those between Denny's and their nearest La Quinta. To accurately calculate distances on the spherical Earth's surface, we leveraged the geosphere library, as Euclidean distances are not suitable for such geospatial computations.
+
+To provide a more detailed breakdown, we implemented a single loop and employed vectorized distance calculations, converting the results into kilometers. The code efficiently utilized the base R rank function to order and sort the list of calculated distances. Subsequently, the indexes and the corresponding distances of the three shortest values were stored within the Dennys and La Quinta dataframes.
+
+Calculate the shortest distances for Dennys locations:
+
+```{r load_data}
+dennys = readRDS("data/dennys.rds")
+lq = readRDS("data/lq.rds")
+
+library(geosphere)
+library(ggplot2)
+
+### found 3 closest lq locations to each Denny's
+
+#changing to long and lat to work with geosphere
+dennys_long_lat <- dennys[, c("longitude", "latitude")]
+lq_long_lat <- lq[, c("longitude", "latitude")]
+
+#assinging LQ ID so we won't lose it later on when sorting.
+lq$lqID <- seq(from = 1,
+               to = length(lq_long_lat$longitude),
+               by = 1)
+
+for (i in 1:nrow(dennys_long_lat)) {
+  #calucate distance against all of lq_long_lat
+  distances <- geosphere::distGeo(dennys_long_lat[i, ], lq_long_lat) / 1000
+  #rank the calculated distances
+  ranking <- rank(distances, ties.method = "first")
+  
+  #find the 3 shortest and store the indexes of B back in dennys_long_lat
+  dennys_long_lat$shortest_lqId[i] <- which(ranking == 1) #Same as which.min()
+  dennys_long_lat$shorter_lqId[i] <- which(ranking == 2)
+  dennys_long_lat$short_lqIdt[i] <- which(ranking == 3)
+  
+  #store the distances back in dennys_long_lat
+  dennys_long_lat$shortestD[i] <-
+  distances[dennys_long_lat$shortest_lqId[i]] #Same as min()
+  dennys_long_lat$shorterD[i] <- distances[dennys_long_lat$shorter_lqId[i]]
+  dennys_long_lat$shortD[i] <- distances[dennys_long_lat$short_lqId[i]]
+}
+
+dennys[, c("shortest_lqId",
+           "shorter_lqId",
+           "short_lqIdt",
+           "shortestD",
+           "shorterD",
+           "shortD")] <-
+dennys_long_lat[, c("shortest_lqId",
+        "shorter_lqId",
+        "short_lqIdt",
+        "shortestD",
+        "shorterD",
+        "shortD")]
+```
+
+Calculate the shortest distances for La Quinta locations:
+
+```{r}
+
+# Extract longitude and latitude columns for both datasets
+dennys_long_lat <- dennys[, c("longitude", "latitude")]
+lq_long_lat <- lq[, c("longitude", "latitude")]
+
+# Assign LQ ID to each La Quinta location
+lq$lqID <- seq(from = 1, to = nrow(lq), by = 1)
+
+# Initialize a new column in lq to store the shortest distances
+lq$shortestD <- NA
+
+# Loop through each La Quinta location
+for (i in 1:nrow(lq_long_lat)) {
+  # Calculate distances between the current La Quinta and all Denny's locations
+  distances <- geosphere::distGeo(lq_long_lat[i, ], dennys_long_lat) / 1000  # Convert to kilometers
+  # Find the Denny's location with the shortest distance
+  min_dist <- min(distances)
+  
+  # Store the shortest distance in the lq dataset
+  lq$shortestD[i] <- min_dist
+}
+
+# Now the lq dataset contains the shortest distance for each La Quinta in the 'shortestD' column
+```
+
+We then plotted all the Dennys and La Quinta locations on a US map to gain a general understanding of their distribution and proximity to each other on the map. Here, we highlighted the Dennys and La Quintas whose shortest distances to their respective counterparts are less than 1 kilometer, indicating their close proximity, while all other points were displayed in gray.
+
+```{r}
+library(ggplot2)
+library(ggmap)
+library(maps)
+```
+
+```{r}
+# Filter locations with a shortest distance less than 5 for both Denny's and La Quinta
+lq$highlight <- ifelse(lq$shortestD < 1, "La Quinta", "Gray")
+dennys$highlight <- ifelse(dennys$shortestD < 1, "Denny's", "Gray")
+
+# Filter out Alaska (AK) and Hawaii (HI) from Denny's and La Quinta locations based on the "state" column
+dennys_filtered <- subset(dennys, !(state %in% c("AK", "HI")))
+lq_filtered <- subset(lq, !(state %in% c("AK", "HI")))
+
+# Create a ggplot object
+gg <- ggplot()
+
+# Add the map background
+us_map_data <- map("usa")
+gg <- gg +
+  geom_polygon(data = us_map_data, aes(x = long, y = lat, group = group), fill = "white", color = "black")
+
+# Filter data points within the specified longitude and latitude range
+# dennys_filtered <- subset(dennys_filtered, longitude >= -130 & longitude <= -65 & latitude >= 20 & latitude <= 50)
+# lq_filtered <- subset(lq_filtered, longitude >= -130 & longitude <= -65 & latitude >= 20 & latitude <= 50)
+
+# Add the data points for Denny's and La Quinta with conditional coloring and plus symbols
+gg <- gg +
+  geom_point(data = dennys_filtered, aes(x = longitude, y = latitude, color = highlight, shape = "Denny's"), size = 2, alpha = 1) +
+  geom_point(data = lq_filtered, aes(x = longitude, y = latitude, color = highlight, shape = "La Quinta"), size = 1.5, alpha = 0.3)
+
+# Customize the map
+gg <- gg +
+  labs(title = "Dennys and La Quinta Locations (Excluding AK and HI)") +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  scale_color_manual(values = c("Denny's" = "red", "La Quinta" = "blue", "Gray" = "gray"),
+                     guide = guide_legend(title = "Location")) +
+  scale_shape_manual(values = c("Denny's" = 3, "La Quinta" = 16), guide = guide_legend(title = "Location")) +
+  scale_alpha_manual(values = c("La Quinta" = 0.3, "Denny's" = 1, "Gray" = 0.2), guide = guide_legend(title = "Distance"))
+
+# Set the y-axis limits to include the upper part of the map
+gg <- gg +
+  ylim(24, 50) +
+  xlim(-130, -65)
+
+# Print or display the map
+print(gg)
+```
+
+We then plotted the cumulative PDF and CDF of the shortest distances for Dennys and Laquintas locations. We observed that the PDF plots are right-skewed, indicating that there is a significant proportion of Dennys and Laquintas with relatively short distances to their respective counterparts. However, for those that are located right next to each other, the proportion becomes significantly lower.
+
+```{r}
+# Load the gridExtra package
+library(ggplot2)
+library(gridExtra)
+
+dennys <- na.omit(dennys)
+lq <- na.omit(lq)
+
+# Create the individual density plots
+p_dennys_density <- ggplot(dennys, aes(x = shortestD)) +
+  geom_density(col = "red", fill = "red", alpha = 0.3) +
+  scale_x_continuous(name = "Distance of Shortest LQ from Denny's", limits = c(0, 100)) +
+  labs(title = "Denny's Density")
+
+p_lq_density <- ggplot(lq, aes(x = shortestD)) +
+  geom_density(col = "blue", fill = "blue", alpha = 0.3) +
+  scale_x_continuous(name = "Distance of Shortest LQ from Denny's", limits = c(0, 100)) +
+  labs(title = "La Quinta Density") 
+
+# Create the cumulative density plots
+p_dennys_cdf <- ggplot(dennys, aes(x = shortestD)) +
+  stat_ecdf(col = "red") +
+  scale_x_continuous(name = "Distance of Shortest LQ from Denny's", limits = c(0, 100)) +
+  labs(title = "Denny's CDF")
+
+p_lq_cdf <- ggplot(lq, aes(x = shortestD)) +
+  stat_ecdf(col = "blue") +
+  scale_x_continuous(name = "Distance of Shortest LQ from Denny's", limits = c(0, 100)) +
+  labs(title = "La Quinta CDF")
+
+# Arrange the plots in a grid
+grid.arrange(p_dennys_density, p_lq_density, p_dennys_cdf, p_lq_cdf, ncol = 2)
+```
+
+Upon further analysis, we decided to plot the two ECDFs of the shortest distances from Denny's and La Quinta locations on the same coordinate system. This approach represents an improvement over the initial analysis presented in the given blog because it allows us to determine the proportions of Denny's and La Quinta locations based on their shortest distances.
+
+For instance, our calculations revealed that only 2.2% of Denny's locations are adjacent to a La Quinta, while 31.6% have a La Quinta within a 5-kilometer radius. Similarly, approximately 3.4% of La Quinta locations are adjacent to a Denny's, and 43.9% have a Denny's within a 5-kilometer radius. This observation leads us to the conclusion that Hedberg's claim is not entirely correct, given the relatively small proportions. 
+
+This project also highlights the significance of considering distributions, which offer more informative insights than merely focusing on point estimates.
+
+```{r}
+# Calculate the CDF values for Denny's when x = 1 and x = 5
+cdf_at_1 <- ecdf(dennys$shortestD)(.1)
+cdf_at_5 <- ecdf(dennys$shortestD)(5)
+cdf_at_1_lq <- ecdf(lq$shortestD)(.1)
+cdf_at_5_lq <- ecdf(lq$shortestD)(5)
+# Print the CDF values
+cat("CDF at x = 1 for Dennys:", cdf_at_1, ", CDF at x = 5 for Dennys:", cdf_at_5, "\n")
+cat("CDF at x = 1 for La Quinta:", cdf_at_1_lq, ", CDF at x = 5 for La Quinta:", cdf_at_5_lq, "\n")
+```
+
+Note that the intersections are points whose CDF values are at x = 1 and x = 5.
+
+```{r}
+
+# Calculate the CDF values for Denny's when x = .1 and x = 5
+cdf_at_1_dennys <- ecdf(dennys$shortestD)(.1)
+cdf_at_5_dennys <- ecdf(dennys$shortestD)(5)
+
+# Calculate the CDF values for La Quinta when x = .1 and x = 5
+cdf_at_1_lq <- ecdf(lq$shortestD)(.1)
+cdf_at_5_lq <- ecdf(lq$shortestD)(5)
+
+# Create a ggplot object for the combined CDF plot
+gg <- ggplot() 
+
+# Add the CDF curves for Denny's and La Quinta with specified labels
+gg <- gg +
+  stat_ecdf(data = dennys, aes(x = shortestD, color = "Denny's"), size = 1.5) +
+  stat_ecdf(data = lq, aes(x = shortestD, color = "La Quinta"), size = 1.5) +
+  scale_x_continuous(name = "Shortest Distance (km)", limits = c(0, 100)) +
+  labs(title = "Dennys and La Quinta CDF")
+
+# Add vertical lines at x = 1 and x = 5
+gg <- gg +
+  geom_vline(xintercept = c(.1, 5), linetype = "dashed", color = "black")
+
+# Calculate the intersection points for both Denny's and La Quinta
+intersection_points <- data.frame(
+  x = c(.1, 5, .1, 5),
+  y = c(cdf_at_1_dennys, cdf_at_5_dennys, cdf_at_1_lq, cdf_at_5_lq)
+)
+
+# Add points of intersection for both Denny's and La Quinta to the plot
+gg <- gg +
+  geom_point(data = intersection_points, aes(x = x, y = y, color = "Intersection"), size = 4)
+
+# Customize the appearance (colors, legend, etc.) as needed
+gg <- gg +
+  scale_color_manual(values = c("Denny's" = "red", "La Quinta" = "blue", "Intersection" = "yellow") ) +
+  labs(color = "Legend") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+# Print or display the combined CDF plot
+print(gg)
+```
+
+<br />
